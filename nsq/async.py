@@ -1,8 +1,18 @@
 import socket
+try:
+    import ssl
+except ImportError:
+    ssl = None # pyflakes.ignore
+try:
+    from SnappySocket import SnappySocket
+except ImportError:
+    SnappySocket = None # pyflakes.ignore
 import struct
 import logging
 
 import tornado.iostream
+import tornado.ioloop
+import tornado.simple_httpclient
 
 import nsq
 
@@ -25,15 +35,22 @@ class AsyncConn(object):
         self.close_callback = close_callback
         self.timeout = timeout
     
+    @property
+    def id(self):
+        return str(self)
+    
+    def __str__(self):
+        return self.host + ':' + str(self.port)
+    
     def connect(self):
         if self.connected or self.connecting:
             return
         
-        self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.s.settimeout(self.timeout)
-        self.s.setblocking(0)
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket.settimeout(self.timeout)
+        self.socket.setblocking(0)
         
-        self.stream = tornado.iostream.IOStream(self.s)
+        self.stream = tornado.iostream.IOStream(self.socket)
         self.stream.set_close_callback(self._socket_close)
         
         self.connecting = True
@@ -81,28 +98,42 @@ class AsyncConn(object):
     def send(self, data):
         self.stream.write(data)
     
-    def __str__(self):
-        return self.host + ':' + str(self.port)
-
-
-if __name__ == '__main__':
-    def connect_callback(c):
-        print "connected"
-        c.send(nsq.subscribe('test', 'ch', 'a', 'b'))
-        c.send(nsq.ready(1))
+    def upgrade_to_tls(self, options=None):
+        assert ssl, "tls_v1 requires Python 2.6+ or Python 2.5 w/ pip install ssl"
+        
+        # in order to upgrade to TLS we need to *replace* the IOStream...
+        #
+        # first remove the event handler for the currently open socket
+        # so that when we add the socket to the new SSLIOStream below, 
+        # it can re-add the appropriate event handlers.
+        tornado.ioloop.IOLoop.instance().remove_handler(self.socket.fileno())
+        
+        opts = {
+            'cert_reqs': ssl.CERT_REQUIRED, 
+            'ca_certs': tornado.simple_httpclient._DEFAULT_CA_CERTS
+        }
+        opts.update(options or {})
+        self.socket = ssl.wrap_socket(self.socket, ssl_version=ssl.PROTOCOL_TLSv1, 
+            do_handshake_on_connect=False, **opts)
+        
+        self.stream = tornado.iostream.SSLIOStream(self.socket)
+        self.stream.set_close_callback(self._socket_close)
+        
+        # now that the IOStream has been swapped we can kickstart
+        # the SSL handshake
+        self.stream._do_ssl_handshake()
     
-    def close_callback(c):
-        print "connection closed"
-    
-    def data_callback(c, data):
-        unpacked = nsq.unpack_response(data)
-        if unpacked[0] == nsq.FRAME_TYPE_MESSAGE:
-            c.send(nsq.ready(1))
-            msg = nsq.decode_message(unpacked[1])
-            print msg.id, msg.body
-            c.send(nsq.finish(msg.id))
-    
-    c = AsyncConn("127.0.0.1", 4150, connect_callback, data_callback, close_callback)
-    c.connect()
-    
-    tornado.ioloop.IOLoop.instance().start()
+    def upgrade_to_snappy(self):
+        assert SnappySocket, "snappy requires the python-snappy package"
+        
+        # in order to upgrade to Snappy we need to use whatever IOStream
+        # is currently in place (normal or SSL)...
+        #
+        # first read any compressed bytes the existing IOStream might have
+        # already buffered and use that to bootstrap the SnappySocket, then 
+        # monkey patch the existing IOStream by replacing its socket
+        # with a wrapper that will automagically handle compression.
+        existing_data = self.stream._consume(self.stream._read_buffer_size)
+        self.socket = SnappySocket(self.socket)
+        self.socket.bootstrap(existing_data)
+        self.stream.socket = self.socket
