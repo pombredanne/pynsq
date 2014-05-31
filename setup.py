@@ -8,14 +8,15 @@ class PyTest(TestCommand):
         TestCommand.finalize_options(self)
         self.test_args = []
         self.test_suite = True
+
     def run_tests(self):
         import pytest
         errno = pytest.main(self.test_args)
         sys.exit(errno)
 
 
-# also update in nsq/__init__.py
-version = '0.5.1'
+# also update in nsq/version.py
+version = '0.6.2'
 
 
 setup(
@@ -33,4 +34,7 @@ setup(
     zip_safe=False,
     tests_require=['pytest', 'mock', 'tornado'],
     cmdclass={'test': PyTest},
+    classifiers=[
+        'License :: OSI Approved :: MIT License'
+    ]
 )

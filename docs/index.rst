@@ -16,9 +16,10 @@ Contents:
 .. toctree::
    :maxdepth: 2
    
-   message
    reader
    writer
+   async_conn
+   message
    legacy_reader
 
 Indices and tables

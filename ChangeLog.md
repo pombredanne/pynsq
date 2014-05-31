@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.6.2 - 2014-02-21
+
+IMPORTANT: this is a bug-fix release to address an issue where `Reader` would raise
+and exception when receiving a heartbeat.
+
+ * #68 - fix heartbeat_interval bug
+
+## 0.6.1 - 2014-02-17
+
+IMPORTANT: this is a bug-fix release to address an issue preventing `Reader` from
+consuming messages.
+
+ * #63 - fix connection attributes bug; `heartbeat_interval` as ms
+ * #65 - fix invalid arguments during read error
+ * #66/#64 - add integration tests; improve testing matrix
+
+## 0.6.0 - 2014-02-13
+
+This release includes an array of new features, refactoring, and bug fixes.
+
+Primarily, support for sampling channels, modifying output buffering, enabling
+Snappy compression, and setting user agent metadata.
+
+Finally, there was a large *internal* refactoring in #52 to achieve better separation of
+concerns and pep8 compliance in #53.
+
+ * #59 - add `nsq_to_nsq` example app (thanks [@ploxiln](https://github.com/ploxiln))
+ * #58 - add user agent `IDENTIFY` metadata
+ * #57 - add channel sampling feature negotiation
+ * #55 - update `Message` docs (thanks [@dsoprea](https://github.com/dsoprea))
+ * #53 - pep8
+ * #52 - evented refactoring
+ * #49 - add output buffering feature negotiation
+ * #50 - add Snappy compression feature negotiation
+ * #51 - fix periodic timers when not configuring `nsqlookupd`
+
 ## 0.5.1 - 2013-08-19
 
 This is a bug-fix release addressing a few issues in `Writer`.
